@@ -3,7 +3,7 @@
 export default function InputForm({ formData, handleChange, handleBlurTime, calculateFees }) {
     return (
         <div className="w-full md:w-1/2 p-8 border-b md:border-b-0 md:border-r border-slate-700">
-            <h2 className="text-2xl font-bold mb-6 text-cyan-400">⚡ SPARTAN LOGISTICS</h2>
+            <h2 className="text-2xl font-bold mb-6 text-cyan-400">⚡SMART CALCULATOR LOGISTICS</h2>
             
             <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
