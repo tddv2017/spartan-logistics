@@ -1,71 +1,130 @@
 "use client";
 import { useState } from 'react';
 
-export default function InputForm({ formData, handleChange, handleBlurTime, calculateFees }: any) {
-    // Tách thành 2 biến để hứng ngày bắt đầu và ngày kết thúc
+export default function InputForm({ formData, handleChange, handleBlurTime, calculateFees, setFormData }: any) {
     const [tempStartDate, setTempStartDate] = useState("");
     const [tempEndDate, setTempEndDate] = useState("");
+    
+    // State cho tính năng Tra Cứu SCSC
+    const [scscId, setScscId] = useState("");
+    const [isLoading, setIsLoading] = useState(false);
+    const [trackingInfo, setTrackingInfo] = useState<any>(null);
+
+    const handleFetchSCSC = async () => {
+        if (!scscId) return alert("Vui lòng nhập ID SCSC!");
+        setIsLoading(true);
+        setTrackingInfo(null);
+        
+        try {
+            const res = await fetch(`/api/scsc?id=${scscId}`);
+            const data = await res.json();
+            
+            if (data.success) {
+                setTrackingInfo(data);
+                // AUTO-FILL: Bơm thẳng dữ liệu vào Form Tính Tiền bên dưới
+                setFormData((prev: any) => ({
+                    ...prev,
+                    cwInput: data.weight,
+                    d1Val: data.dateIn,
+                    t1Val: data.timeIn
+                }));
+            } else {
+                alert("Lỗi: " + data.error);
+            }
+        } catch (error) {
+            alert("Không thể kết nối với máy chủ!");
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     const addHolidayRange = () => {
-        if (!tempStartDate) {
-            alert("Vui lòng chọn ít nhất 'Từ ngày' để thêm Lễ!");
-            return;
-        }
-
+        // ... (Giữ nguyên logic thêm ngày Lễ cũ) ...
+        if (!tempStartDate) return alert("Vui lòng chọn ít nhất 'Từ ngày' để thêm Lễ!");
         let newDates: string[] = [];
-
         if (!tempEndDate) {
-            // Trường hợp 1: Chỉ chọn 1 ngày
             newDates.push(tempStartDate);
         } else {
-            // Trường hợp 2: Chọn nhiều ngày liên tiếp (Từ ngày -> Đến ngày)
             let start = new Date(tempStartDate);
             let end = new Date(tempEndDate);
-
-            if (end < start) {
-                alert("Ngày kết thúc không thể trước ngày bắt đầu!");
-                return;
-            }
-
-            // Vòng lặp tự động đẻ ra các ngày nằm giữa
+            if (end < start) return alert("Ngày kết thúc không thể trước ngày bắt đầu!");
             let current = new Date(start);
             while (current <= end) {
                 const yyyy = current.getFullYear();
                 const mm = String(current.getMonth() + 1).padStart(2, '0');
                 const dd = String(current.getDate()).padStart(2, '0');
                 newDates.push(`${yyyy}-${mm}-${dd}`);
-                
-                // Cộng thêm 1 ngày
                 current.setDate(current.getDate() + 1);
             }
         }
-
-        // Kiểm tra xem có ngày nào bị trùng với dữ liệu cũ không (Chống lưu đè)
         const currentHolidays = formData.holidays || [];
         const uniqueNewDates = newDates.filter(d => !currentHolidays.includes(d));
-
         if (uniqueNewDates.length > 0) {
-            // Gom danh sách cũ và các ngày mới quét được đẩy lên State (và Firebase)
-            handleChange({ 
-                target: { name: 'holidays', value: [...currentHolidays, ...uniqueNewDates] } 
-            });
+            handleChange({ target: { name: 'holidays', value: [...currentHolidays, ...uniqueNewDates] } });
         }
-
-        // Xóa ô nhập cho sạch sẽ sau khi thêm xong
-        setTempStartDate("");
-        setTempEndDate("");
+        setTempStartDate(""); setTempEndDate("");
     };
 
     const removeHoliday = (dateToRemove: string) => {
-        handleChange({ 
-            target: { name: 'holidays', value: formData.holidays.filter((d: string) => d !== dateToRemove) } 
-        });
+        handleChange({ target: { name: 'holidays', value: formData.holidays.filter((d: string) => d !== dateToRemove) } });
     };
 
     return (
-        <div className="w-full md:w-1/2 p-8 border-b md:border-b-0 md:border-r border-slate-700">
-            <h2 className="text-2xl font-bold mb-6 text-cyan-400">⚡ SPARTAN LOGISTICS</h2>
+        <div className="w-full md:w-1/2 p-8 border-b md:border-b-0 md:border-r border-slate-700 overflow-y-auto">
+            <h2 className="text-2xl font-bold mb-6 text-cyan-400 flex items-center gap-2">
+                ⚡ SPARTAN LOGISTICS
+            </h2>
             
+            {/* 1. KHUNG TRA CỨU SCSC THÔNG MINH */}
+            <div className="bg-slate-800/80 p-4 rounded-lg border border-slate-600 mb-6 shadow-inner">
+                <label className="block text-sm font-bold text-sky-400 mb-2">Tra cứu lô hàng SCSC (Nhập ID / AWB)</label>
+                <div className="flex gap-2">
+                    <input 
+                        type="text" 
+                        value={scscId} 
+                        onChange={(e) => setScscId(e.target.value)} 
+                        placeholder="VD: 34925530" 
+                        className="flex-1 bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:outline-none focus:border-sky-500 font-mono"
+                        onKeyDown={(e) => e.key === 'Enter' && handleFetchSCSC()}
+                    />
+                    <button 
+                        onClick={handleFetchSCSC} 
+                        disabled={isLoading}
+                        className="bg-sky-600 hover:bg-sky-500 disabled:bg-slate-600 text-white font-bold py-2 px-6 rounded-lg transition-colors flex items-center"
+                    >
+                        {isLoading ? 'Đang kéo...' : 'Tra cứu'}
+                    </button>
+                </div>
+
+                {/* BẢNG HIỂN THỊ KẾT QUẢ SCSC */}
+                {trackingInfo && (
+                    <div className="mt-4 p-3 bg-slate-900 rounded border border-slate-700 text-sm">
+                        <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+                            <div><span className="text-slate-500">Chuyến bay:</span> <span className="text-white font-bold">{trackingInfo.flight}</span></div>
+                            <div><span className="text-slate-500">Chặng:</span> <span className="text-white">{trackingInfo.origin} ✈️ {trackingInfo.dest}</span></div>
+                            <div><span className="text-slate-500">Số kiện:</span> <span className="text-white">{trackingInfo.pieces}</span></div>
+                            <div><span className="text-slate-500">Charge Weight:</span> <span className="text-amber-400 font-bold">{trackingInfo.weight} kg</span></div>
+                            <div><span className="text-slate-500">Mã SHC:</span> <span className="text-fuchsia-400 font-bold">{trackingInfo.shc}</span></div>
+                            <div><span className="text-slate-500">Ngày bay (ATA):</span> <span className="text-cyan-400">{trackingInfo.rawAta}</span></div>
+                            <div className="col-span-2 border-t border-slate-800 pt-2 mt-1">
+                                <span className="text-slate-500">Shipper:</span> <span className="text-white block truncate" title={trackingInfo.shipper}>{trackingInfo.shipper}</span>
+                            </div>
+                            <div className="col-span-2">
+                                <span className="text-slate-500">Consignee:</span> <span className="text-white block truncate" title={trackingInfo.consignee}>{trackingInfo.consignee}</span>
+                            </div>
+                            <div className="col-span-2 border-t border-slate-800 pt-2 mt-1">
+                                <span className="text-slate-500 block mb-1">Trạng thái (Status):</span> 
+                                <span className="text-emerald-400 text-xs">{trackingInfo.statusText}</span>
+                            </div>
+                        </div>
+                        <div className="mt-3 text-xs text-sky-400 text-center font-bold bg-sky-900/30 py-1 rounded">
+                            Đã tự động điền Số Kg và Giờ Đáp vào Form bên dưới! ↓
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* 2. KHUNG FORM TÍNH TIỀN (Giữ nguyên như cũ) */}
             <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -130,32 +189,16 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
                     </div>
                 </div>
 
-                {/* KHUNG CÀI ĐẶT NGÀY LỄ ĐÃ NÂNG CẤP LÊN MULTI-DATE */}
+                {/* KHUNG CÀI ĐẶT NGÀY LỄ */}
                 <div className="p-4 bg-slate-800/50 border border-slate-700 rounded-lg">
                     <label className="block text-sm font-medium text-pink-400 mb-2">Cài đặt Ngày Lễ (Cập nhật cho cả kho)</label>
                     <div className="flex items-center gap-2 mb-2">
-                        <input 
-                            type="date" 
-                            value={tempStartDate} 
-                            onChange={(e) => setTempStartDate(e.target.value)} 
-                            className="flex-1 bg-slate-800 border border-pink-500/50 rounded-lg p-2 text-white focus:outline-none focus:border-pink-500 [color-scheme:dark]"
-                            title="Từ ngày"
-                        />
+                        <input type="date" value={tempStartDate} onChange={(e) => setTempStartDate(e.target.value)} className="flex-1 bg-slate-800 border border-pink-500/50 rounded-lg p-2 text-white focus:outline-none focus:border-pink-500 [color-scheme:dark]" title="Từ ngày" />
                         <span className="text-slate-500 font-bold">-</span>
-                        <input 
-                            type="date" 
-                            value={tempEndDate} 
-                            onChange={(e) => setTempEndDate(e.target.value)} 
-                            className="flex-1 bg-slate-800 border border-pink-500/50 rounded-lg p-2 text-white focus:outline-none focus:border-pink-500 [color-scheme:dark]"
-                            title="Đến ngày (Để trống nếu chỉ nghỉ 1 ngày)"
-                        />
+                        <input type="date" value={tempEndDate} onChange={(e) => setTempEndDate(e.target.value)} className="flex-1 bg-slate-800 border border-pink-500/50 rounded-lg p-2 text-white focus:outline-none focus:border-pink-500 [color-scheme:dark]" title="Đến ngày (Để trống nếu chỉ nghỉ 1 ngày)" />
                     </div>
                     
-                    <button 
-                        type="button" 
-                        onClick={addHolidayRange} 
-                        className="w-full bg-pink-600/20 hover:bg-pink-600/40 text-pink-400 border border-pink-600/50 font-bold py-2 px-4 rounded-lg transition-colors"
-                    >
+                    <button type="button" onClick={addHolidayRange} className="w-full bg-pink-600/20 hover:bg-pink-600/40 text-pink-400 border border-pink-600/50 font-bold py-2 px-4 rounded-lg transition-colors">
                         + Thêm Lễ
                     </button>
                     
@@ -164,13 +207,7 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
                             {formData.holidays.sort().map((h: string) => (
                                 <span key={h} className="bg-pink-500/20 text-pink-300 border border-pink-500/50 px-3 py-1 rounded-full text-sm flex items-center gap-2">
                                     {h.split('-').reverse().join('/')}
-                                    <button 
-                                        type="button" 
-                                        onClick={() => removeHoliday(h)} 
-                                        className="text-pink-400 hover:text-white hover:bg-pink-500/50 rounded-full w-5 h-5 flex items-center justify-center transition-colors"
-                                    >
-                                        ✕
-                                    </button>
+                                    <button type="button" onClick={() => removeHoliday(h)} className="text-pink-400 hover:text-white hover:bg-pink-500/50 rounded-full w-5 h-5 flex items-center justify-center transition-colors">✕</button>
                                 </span>
                             ))}
                         </div>
