@@ -11,7 +11,7 @@ export default function InvoiceBoard({ result, onCopy }) {
 
     return (
         <div className="w-full md:w-1/2 p-8 bg-slate-900/50 flex flex-col justify-center relative">
-            <h3 className="text-xl font-bold mb-6 text-slate-300">📄 HÓA ĐƠN CHI TIẾT</h3>
+            <h3 className="text-xl font-bold mb-6 text-slate-300">📄 THÔNG TIN CHI TIẾT PHÍ</h3>
             
             <div className="space-y-4">
                 <div className="p-4 bg-slate-800 rounded-lg border border-slate-700">
