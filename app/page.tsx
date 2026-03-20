@@ -23,7 +23,7 @@ export default function Home() {
     const [formData, setFormData] = useState<any>({
         code: 'GEN', express: '0', otSelect: 'auto',
         d1Val: '', t1Val: '', d2Val: '', t2Val: '', cwInput: '',
-        holidays: '' // ĐÃ THÊM BIẾN NGÀY LỄ VÀO ĐÂY
+        holidays: [] // ĐÃ SỬA: Chuyển thành dạng mảng (Array) để chứa nhiều ngày
     });
     const [result, setResult] = useState<any>(null);
 

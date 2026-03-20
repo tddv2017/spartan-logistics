@@ -1,6 +1,27 @@
 "use client";
+import { useState } from 'react';
 
 export default function InputForm({ formData, handleChange, handleBlurTime, calculateFees }: any) {
+    // Biến phụ để lưu ngày đang chọn trên lịch trước khi nhấn "Thêm"
+    const [tempHoliday, setTempHoliday] = useState("");
+
+    const addHoliday = () => {
+        if (!tempHoliday) return;
+        // Kiểm tra xem ngày đó đã được thêm chưa, nếu chưa thì push vào mảng
+        if (!formData.holidays.includes(tempHoliday)) {
+            handleChange({ 
+                target: { name: 'holidays', value: [...formData.holidays, tempHoliday] } 
+            });
+        }
+        setTempHoliday(""); // Xóa ô chọn sau khi thêm
+    };
+
+    const removeHoliday = (dateToRemove: string) => {
+        handleChange({ 
+            target: { name: 'holidays', value: formData.holidays.filter((d: string) => d !== dateToRemove) } 
+        });
+    };
+
     return (
         <div className="w-full md:w-1/2 p-8 border-b md:border-b-0 md:border-r border-slate-700">
             <h2 className="text-2xl font-bold mb-6 text-cyan-400">⚡ SPARTAN LOGISTICS</h2>
@@ -69,13 +90,46 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
                     </div>
                 </div>
 
-                {/* THÊM KHUNG CÀI ĐẶT NGÀY LỄ VÀO ĐÂY */}
-                <div>
-                    <label className="block text-sm font-medium text-pink-400 mb-1">Cài đặt Ngày Lễ (Cách nhau dấu phẩy)</label>
-                    <input type="text" name="holidays" value={formData.holidays} onChange={handleChange} placeholder="VD: 18/04, 30/04/2026, 01/05" className="w-full bg-slate-800 border border-pink-500/50 rounded-lg p-3 text-white focus:outline-none focus:border-pink-500"/>
+                {/* KHUNG CÀI ĐẶT NGÀY LỄ (DẠNG LỊCH) */}
+                <div className="p-4 bg-slate-800/50 border border-slate-700 rounded-lg">
+                    <label className="block text-sm font-medium text-pink-400 mb-2">Cài đặt Ngày Lễ (Chọn trên lịch)</label>
+                    <div className="flex gap-2">
+                        <input 
+                            type="date" 
+                            value={tempHoliday} 
+                            onChange={(e) => setTempHoliday(e.target.value)} 
+                            className="flex-1 bg-slate-800 border border-pink-500/50 rounded-lg p-2 text-white focus:outline-none focus:border-pink-500 [color-scheme:dark]"
+                        />
+                        <button 
+                            type="button" 
+                            onClick={addHoliday} 
+                            className="bg-pink-600 hover:bg-pink-500 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                        >
+                            Thêm Lễ
+                        </button>
+                    </div>
+                    
+                    {/* KHU VỰC HIỂN THỊ TAG NGÀY LỄ */}
+                    {formData.holidays.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-3">
+                            {formData.holidays.map((h: string) => (
+                                <span key={h} className="bg-pink-500/20 text-pink-300 border border-pink-500/50 px-3 py-1 rounded-full text-sm flex items-center gap-2">
+                                    {/* Đảo ngược YYYY-MM-DD thành DD/MM/YYYY cho dễ nhìn */}
+                                    {h.split('-').reverse().join('/')}
+                                    <button 
+                                        type="button" 
+                                        onClick={() => removeHoliday(h)} 
+                                        className="text-pink-400 hover:text-white hover:bg-pink-500/50 rounded-full w-5 h-5 flex items-center justify-center transition-colors"
+                                    >
+                                        ✕
+                                    </button>
+                                </span>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
-                <button onClick={calculateFees} className="w-full mt-4 bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg shadow-cyan-500/30">
+                <button onClick={calculateFees} className="w-full mt-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg shadow-cyan-500/30">
                     TÍNH TIỀN
                 </button>
             </div>

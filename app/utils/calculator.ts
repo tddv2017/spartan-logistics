@@ -14,15 +14,14 @@ export const calculateLogisticsFees = (data: any) => {
     const cal2 = new Date(dt2.getFullYear(), dt2.getMonth(), dt2.getDate());
     const calDiff = Math.round((cal2.getTime() - cal1.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
-    // --- BỘ NHẬN DIỆN NGÀY LỄ ---
-    const holidayList = (holidays || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+    // --- BỘ NHẬN DIỆN NGÀY LỄ (Từ mảng Input Form) ---
+    // holidays giờ đây là mảng: ["2026-04-30", "2026-05-01"]
     const checkIsHoliday = (dObj: Date) => {
         const d = dObj.getDate().toString().padStart(2, '0');
         const m = (dObj.getMonth() + 1).toString().padStart(2, '0');
         const y = dObj.getFullYear();
-        const fullDate = `${d}/${m}/${y}`; // So sánh: 30/04/2026
-        const shortDate = `${d}/${m}`;     // So sánh: 30/04
-        return holidayList.includes(fullDate) || holidayList.includes(shortDate);
+        const yyyy_mm_dd = `${y}-${m}-${d}`; 
+        return holidays.includes(yyyy_mm_dd);
     };
 
     // --- 1. PHÍ PHỤC VỤ ---
@@ -91,9 +90,9 @@ export const calculateLogisticsFees = (data: any) => {
                 for (let i = 3; i < calDiff; i++) {
                     let tempDate = new Date(cal1.getTime() + i * 24 * 60 * 60 * 1000);
                     let isSun = tempDate.getDay() === 0;
-                    let isHol = checkIsHoliday(tempDate); // Né thêm ngày Lễ
+                    let isHol = checkIsHoliday(tempDate); 
 
-                    if (!isSun && !isHol) { // Bỏ qua nếu là CN hoặc Lễ
+                    if (!isSun && !isHol) { // Bỏ qua Chủ Nhật và Lễ
                         chargeableDays++;
                         if (chargeableDays <= 3) {
                             g1_count++;
