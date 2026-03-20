@@ -1,5 +1,5 @@
-export const calculateLogisticsFees = (data) => {
-    const { code, express, otSelect, cwInput, d1Val, t1Val, d2Val, t2Val } = data;
+export const calculateLogisticsFees = (data: any) => {
+    const { code, express, otSelect, cwInput, d1Val, t1Val, d2Val, t2Val, holidays } = data;
     const cw = parseFloat(cwInput.replace(',', '.'));
     
     const dt1 = new Date(`${d1Val}T${t1Val || '00:00'}:00`);
@@ -7,18 +7,23 @@ export const calculateLogisticsFees = (data) => {
     
     if (dt2 < dt1) throw new Error("Ngày lấy hàng không thể trước ngày đáp!");
 
-    const diffHours = (dt2 - dt1) / (1000 * 60 * 60);
+    const diffHours = (dt2.getTime() - dt1.getTime()) / (1000 * 60 * 60);
     const blocks24h = diffHours <= 0 ? 1 : Math.ceil(diffHours / 24);
 
     const cal1 = new Date(dt1.getFullYear(), dt1.getMonth(), dt1.getDate());
     const cal2 = new Date(dt2.getFullYear(), dt2.getMonth(), dt2.getDate());
-    const calDiff = Math.round((cal2 - cal1) / (1000 * 60 * 60 * 24)) + 1;
+    const calDiff = Math.round((cal2.getTime() - cal1.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
-    let suns = 0;
-    for (let i = 0; i < calDiff; i++) {
-        let tempDate = new Date(cal1.getTime() + i * 24 * 60 * 60 * 1000);
-        if (tempDate.getDay() === 0) suns++;
-    }
+    // --- BỘ NHẬN DIỆN NGÀY LỄ ---
+    const holidayList = (holidays || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+    const checkIsHoliday = (dObj: Date) => {
+        const d = dObj.getDate().toString().padStart(2, '0');
+        const m = (dObj.getMonth() + 1).toString().padStart(2, '0');
+        const y = dObj.getFullYear();
+        const fullDate = `${d}/${m}/${y}`; // So sánh: 30/04/2026
+        const shortDate = `${d}/${m}`;     // So sánh: 30/04
+        return holidayList.includes(fullDate) || holidayList.includes(shortDate);
+    };
 
     // --- 1. PHÍ PHỤC VỤ ---
     let feeHand = 0;
@@ -42,18 +47,24 @@ export const calculateLogisticsFees = (data) => {
         }
     }
 
-    // --- 2. PHÍ OT ---
+    // --- 2. PHÍ OT (Tự động nhận diện OT Lễ) ---
     let feeOT = 0, otRate = 0, otLabelText = "Phí Ngoài Giờ (OT)";
     if (otSelect === "auto") {
+        let isPickupHoliday = checkIsHoliday(dt2);
+        let isSun = dt2.getDay() === 0;
         let timeFloat = dt2.getHours() + (dt2.getMinutes() / 60);
-        if (dt2.getDay() === 0) { otRate = 0.27; otLabelText = "Ngoài Giờ (Chủ Nhật 27%)"; }
+
+        if (isPickupHoliday || isSun) { 
+            otRate = 0.27; 
+            otLabelText = isPickupHoliday ? "Ngoài Giờ (Lễ 27%)" : "Ngoài Giờ (Chủ Nhật 27%)"; 
+        }
         else if (timeFloat >= 17 && timeFloat < 22) { otRate = 0.09; otLabelText = "Ngoài Giờ (17h-22h 9%)"; }
         else if (timeFloat >= 22 || timeFloat <= 6) { otRate = 0.18; otLabelText = "Ngoài Giờ (22h-06h 18%)"; }
     } else {
         otRate = parseFloat(otSelect);
         if (otRate === 0.09) otLabelText = "Ngoài Giờ (Thủ công 9%)";
         if (otRate === 0.18) otLabelText = "Ngoài Giờ (Thủ công 18%)";
-        if (otRate === 0.27) otLabelText = "Ngoài Giờ (Thủ công 27%)";
+        if (otRate === 0.27) otLabelText = "Ngoài Giờ (Thủ công CN/Lễ 27%)";
     }
 
     if (otRate > 0) {
@@ -79,7 +90,10 @@ export const calculateLogisticsFees = (data) => {
 
                 for (let i = 3; i < calDiff; i++) {
                     let tempDate = new Date(cal1.getTime() + i * 24 * 60 * 60 * 1000);
-                    if (tempDate.getDay() !== 0) {
+                    let isSun = tempDate.getDay() === 0;
+                    let isHol = checkIsHoliday(tempDate); // Né thêm ngày Lễ
+
+                    if (!isSun && !isHol) { // Bỏ qua nếu là CN hoặc Lễ
                         chargeableDays++;
                         if (chargeableDays <= 3) {
                             g1_count++;
@@ -117,7 +131,7 @@ export const calculateLogisticsFees = (data) => {
                     feeStor = 157500;
                     breakdown.push({ text: `-> Áp dụng giá Min: 157.500 VNĐ`, isWarn: true });
                 }
-                daysMsg = `${calDiff} ngày lịch (Đã miễn phí 3 ngày đầu)`;
+                daysMsg = `${calDiff} ngày lịch (Đã trừ Lễ/CN nếu có)`;
             }
             break;
         case "PER":

@@ -1,9 +1,9 @@
 "use client";
 
-export default function InputForm({ formData, handleChange, handleBlurTime, calculateFees }) {
+export default function InputForm({ formData, handleChange, handleBlurTime, calculateFees }: any) {
     return (
         <div className="w-full md:w-1/2 p-8 border-b md:border-b-0 md:border-r border-slate-700">
-            <h2 className="text-2xl font-bold mb-6 text-cyan-400">⚡SMART CALCULATOR LOGISTICS</h2>
+            <h2 className="text-2xl font-bold mb-6 text-cyan-400">⚡ SPARTAN LOGISTICS</h2>
             
             <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -67,6 +67,12 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
                             <option value="0.27">Chủ Nhật / Lễ (27%)</option>
                         </select>
                     </div>
+                </div>
+
+                {/* THÊM KHUNG CÀI ĐẶT NGÀY LỄ VÀO ĐÂY */}
+                <div>
+                    <label className="block text-sm font-medium text-pink-400 mb-1">Cài đặt Ngày Lễ (Cách nhau dấu phẩy)</label>
+                    <input type="text" name="holidays" value={formData.holidays} onChange={handleChange} placeholder="VD: 18/04, 30/04/2026, 01/05" className="w-full bg-slate-800 border border-pink-500/50 rounded-lg p-3 text-white focus:outline-none focus:border-pink-500"/>
                 </div>
 
                 <button onClick={calculateFees} className="w-full mt-4 bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg shadow-cyan-500/30">
