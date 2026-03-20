@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import InputForm from '@/app/components/InputForm';
 import InvoiceBoard from '@/app/components/InvoiceBoard';
 import { calculateLogisticsFees } from '@/app/utils/calculator';
+// Nhúng Firebase Firestore
+import { doc, getDoc, setDoc } from "firebase/firestore"; 
+import { db } from '@/app/utils/firebase'; 
 
 const safeTime = (timeStr: string) => {
     let val = timeStr.replace(/\D/g, '');
@@ -23,9 +26,40 @@ export default function Home() {
     const [formData, setFormData] = useState<any>({
         code: 'GEN', express: '0', otSelect: 'auto',
         d1Val: '', t1Val: '', d2Val: '', t2Val: '', cwInput: '',
-        holidays: [] // ĐÃ SỬA: Chuyển thành dạng mảng (Array) để chứa nhiều ngày
+        holidays: [] 
     });
     const [result, setResult] = useState<any>(null);
+
+    // ========================================================
+    // TỰ ĐỘNG ĐỌC NGÀY LỄ TỪ FIREBASE KHI MỞ APP
+    // ========================================================
+    useEffect(() => {
+        const fetchHolidays = async () => {
+            try {
+                const docRef = doc(db, "configs", "logistics");
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    setFormData((prev: any) => ({ ...prev, holidays: docSnap.data().holidays || [] }));
+                }
+            } catch (error) {
+                console.error("Lỗi khi kéo dữ liệu Firebase:", error);
+            }
+        };
+        fetchHolidays();
+    }, []);
+
+    // ========================================================
+    // LƯU NGÀY LỄ LÊN FIREBASE MỖI KHI CÓ SỰ THAY ĐỔI
+    // ========================================================
+    const updateHolidaysToFirebase = async (newHolidays: string[]) => {
+        try {
+            const docRef = doc(db, "configs", "logistics");
+            await setDoc(docRef, { holidays: newHolidays }, { merge: true });
+        } catch (error) {
+            console.error("Lỗi khi lưu lên Firebase:", error);
+            alert("Không thể lưu ngày lễ lên máy chủ!");
+        }
+    };
 
     const autoSelectExpress = (data: any) => {
         if (!data.d1Val || !data.d2Val) return data.express;
@@ -52,6 +86,12 @@ export default function Home() {
             if (['d1Val', 'd2Val', 't1Val', 't2Val', 'cargoCode'].includes(name)) {
                 updated.express = autoSelectExpress(updated);
             }
+            
+            // Nếu người dùng Thêm/Xóa ngày lễ -> Đẩy ngay lên Firebase
+            if (name === 'holidays') {
+                updateHolidaysToFirebase(value);
+            }
+            
             return updated;
         });
     };
