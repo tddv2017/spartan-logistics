@@ -2,18 +2,58 @@
 import { useState } from 'react';
 
 export default function InputForm({ formData, handleChange, handleBlurTime, calculateFees }: any) {
-    // Biến phụ để lưu ngày đang chọn trên lịch trước khi nhấn "Thêm"
-    const [tempHoliday, setTempHoliday] = useState("");
+    // Tách thành 2 biến để hứng ngày bắt đầu và ngày kết thúc
+    const [tempStartDate, setTempStartDate] = useState("");
+    const [tempEndDate, setTempEndDate] = useState("");
 
-    const addHoliday = () => {
-        if (!tempHoliday) return;
-        // Kiểm tra xem ngày đó đã được thêm chưa, nếu chưa thì push vào mảng
-        if (!formData.holidays.includes(tempHoliday)) {
+    const addHolidayRange = () => {
+        if (!tempStartDate) {
+            alert("Vui lòng chọn ít nhất 'Từ ngày' để thêm Lễ!");
+            return;
+        }
+
+        let newDates: string[] = [];
+
+        if (!tempEndDate) {
+            // Trường hợp 1: Chỉ chọn 1 ngày
+            newDates.push(tempStartDate);
+        } else {
+            // Trường hợp 2: Chọn nhiều ngày liên tiếp (Từ ngày -> Đến ngày)
+            let start = new Date(tempStartDate);
+            let end = new Date(tempEndDate);
+
+            if (end < start) {
+                alert("Ngày kết thúc không thể trước ngày bắt đầu!");
+                return;
+            }
+
+            // Vòng lặp tự động đẻ ra các ngày nằm giữa
+            let current = new Date(start);
+            while (current <= end) {
+                const yyyy = current.getFullYear();
+                const mm = String(current.getMonth() + 1).padStart(2, '0');
+                const dd = String(current.getDate()).padStart(2, '0');
+                newDates.push(`${yyyy}-${mm}-${dd}`);
+                
+                // Cộng thêm 1 ngày
+                current.setDate(current.getDate() + 1);
+            }
+        }
+
+        // Kiểm tra xem có ngày nào bị trùng với dữ liệu cũ không (Chống lưu đè)
+        const currentHolidays = formData.holidays || [];
+        const uniqueNewDates = newDates.filter(d => !currentHolidays.includes(d));
+
+        if (uniqueNewDates.length > 0) {
+            // Gom danh sách cũ và các ngày mới quét được đẩy lên State (và Firebase)
             handleChange({ 
-                target: { name: 'holidays', value: [...formData.holidays, tempHoliday] } 
+                target: { name: 'holidays', value: [...currentHolidays, ...uniqueNewDates] } 
             });
         }
-        setTempHoliday(""); // Xóa ô chọn sau khi thêm
+
+        // Xóa ô nhập cho sạch sẽ sau khi thêm xong
+        setTempStartDate("");
+        setTempEndDate("");
     };
 
     const removeHoliday = (dateToRemove: string) => {
@@ -90,31 +130,39 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
                     </div>
                 </div>
 
-                {/* KHUNG CÀI ĐẶT NGÀY LỄ (DẠNG LỊCH) */}
+                {/* KHUNG CÀI ĐẶT NGÀY LỄ ĐÃ NÂNG CẤP LÊN MULTI-DATE */}
                 <div className="p-4 bg-slate-800/50 border border-slate-700 rounded-lg">
-                    <label className="block text-sm font-medium text-pink-400 mb-2">Cài đặt Ngày Lễ (Chọn trên lịch)</label>
-                    <div className="flex gap-2">
+                    <label className="block text-sm font-medium text-pink-400 mb-2">Cài đặt Ngày Lễ (Cập nhật cho cả kho)</label>
+                    <div className="flex items-center gap-2 mb-2">
                         <input 
                             type="date" 
-                            value={tempHoliday} 
-                            onChange={(e) => setTempHoliday(e.target.value)} 
+                            value={tempStartDate} 
+                            onChange={(e) => setTempStartDate(e.target.value)} 
                             className="flex-1 bg-slate-800 border border-pink-500/50 rounded-lg p-2 text-white focus:outline-none focus:border-pink-500 [color-scheme:dark]"
+                            title="Từ ngày"
                         />
-                        <button 
-                            type="button" 
-                            onClick={addHoliday} 
-                            className="bg-pink-600 hover:bg-pink-500 text-white font-bold py-2 px-4 rounded-lg transition-colors"
-                        >
-                            Thêm Lễ
-                        </button>
+                        <span className="text-slate-500 font-bold">-</span>
+                        <input 
+                            type="date" 
+                            value={tempEndDate} 
+                            onChange={(e) => setTempEndDate(e.target.value)} 
+                            className="flex-1 bg-slate-800 border border-pink-500/50 rounded-lg p-2 text-white focus:outline-none focus:border-pink-500 [color-scheme:dark]"
+                            title="Đến ngày (Để trống nếu chỉ nghỉ 1 ngày)"
+                        />
                     </div>
                     
-                    {/* KHU VỰC HIỂN THỊ TAG NGÀY LỄ */}
-                    {formData.holidays.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-3">
-                            {formData.holidays.map((h: string) => (
+                    <button 
+                        type="button" 
+                        onClick={addHolidayRange} 
+                        className="w-full bg-pink-600/20 hover:bg-pink-600/40 text-pink-400 border border-pink-600/50 font-bold py-2 px-4 rounded-lg transition-colors"
+                    >
+                        + Thêm Lễ
+                    </button>
+                    
+                    {formData.holidays?.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-slate-700">
+                            {formData.holidays.sort().map((h: string) => (
                                 <span key={h} className="bg-pink-500/20 text-pink-300 border border-pink-500/50 px-3 py-1 rounded-full text-sm flex items-center gap-2">
-                                    {/* Đảo ngược YYYY-MM-DD thành DD/MM/YYYY cho dễ nhìn */}
                                     {h.split('-').reverse().join('/')}
                                     <button 
                                         type="button" 

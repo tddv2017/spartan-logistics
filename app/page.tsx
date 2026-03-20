@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 import InputForm from '@/app/components/InputForm';
 import InvoiceBoard from '@/app/components/InvoiceBoard';
 import { calculateLogisticsFees } from '@/app/utils/calculator';
-// Nhúng Firebase Firestore
-import { doc, getDoc, setDoc } from "firebase/firestore"; 
+// Nhúng Radar Firebase
+import { doc, onSnapshot, setDoc } from "firebase/firestore"; 
 import { db } from '@/app/utils/firebase'; 
 
 const safeTime = (timeStr: string) => {
@@ -30,34 +30,32 @@ export default function Home() {
     });
     const [result, setResult] = useState<any>(null);
 
-    // ========================================================
-    // TỰ ĐỘNG ĐỌC NGÀY LỄ TỪ FIREBASE KHI MỞ APP
-    // ========================================================
+    // =====================================================================
+    // 🛰️ RADAR THEO DÕI NGÀY LỄ TỪ FIREBASE (REAL-TIME)
+    // =====================================================================
     useEffect(() => {
-        const fetchHolidays = async () => {
-            try {
-                const docRef = doc(db, "configs", "logistics");
-                const docSnap = await getDoc(docRef);
-                if (docSnap.exists()) {
-                    setFormData((prev: any) => ({ ...prev, holidays: docSnap.data().holidays || [] }));
-                }
-            } catch (error) {
-                console.error("Lỗi khi kéo dữ liệu Firebase:", error);
+        const docRef = doc(db, "configs", "logistics");
+        
+        // onSnapshot sẽ lắng nghe 24/7. Có thay đổi là nó tự động cập nhật formData.
+        const unsubscribe = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const fetchedHolidays = docSnap.data().holidays || [];
+                setFormData((prev: any) => ({ ...prev, holidays: fetchedHolidays }));
             }
-        };
-        fetchHolidays();
+        });
+
+        // Tắt radar khi tắt trình duyệt để nhẹ máy
+        return () => unsubscribe();
     }, []);
 
-    // ========================================================
-    // LƯU NGÀY LỄ LÊN FIREBASE MỖI KHI CÓ SỰ THAY ĐỔI
-    // ========================================================
+    // HÀM BẮN DỮ LIỆU LÊN DATABASE
     const updateHolidaysToFirebase = async (newHolidays: string[]) => {
         try {
             const docRef = doc(db, "configs", "logistics");
             await setDoc(docRef, { holidays: newHolidays }, { merge: true });
         } catch (error) {
             console.error("Lỗi khi lưu lên Firebase:", error);
-            alert("Không thể lưu ngày lễ lên máy chủ!");
+            alert("Lỗi phân quyền! Hãy kiểm tra lại Firebase Rules.");
         }
     };
 
@@ -87,7 +85,7 @@ export default function Home() {
                 updated.express = autoSelectExpress(updated);
             }
             
-            // Nếu người dùng Thêm/Xóa ngày lễ -> Đẩy ngay lên Firebase
+            // Nếu phát hiện thao tác Thêm/Xóa Lễ -> Bắn thẳng lên máy chủ
             if (name === 'holidays') {
                 updateHolidaysToFirebase(value);
             }
