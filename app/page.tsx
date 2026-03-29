@@ -136,6 +136,7 @@ export default function Home() {
                     handleChange={handleChange} 
                     handleBlurTime={handleBlurTime} 
                     calculateFees={handleCalculate} 
+                    setFormData={setFormData}
                 />
                 <InvoiceBoard 
                     result={result} 
