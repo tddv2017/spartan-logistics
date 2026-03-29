@@ -6,12 +6,7 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
     const [tempStartDate, setTempStartDate] = useState("");
     const [tempEndDate, setTempEndDate] = useState("");
     
-    // State cho tính năng Tra Cứu SCSC
-    const [scscId, setScscId] = useState("");
-    const [isLoading, setIsLoading] = useState(false);
-    const [trackingInfo, setTrackingInfo] = useState<any>(null);
-    
-    // State cho Máy quét QR
+    // State bật/tắt Camera
     const [isScanning, setIsScanning] = useState(false);
 
     // Kích hoạt Camera khi bấm nút Quét
@@ -19,91 +14,87 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
         if (isScanning) {
             const scanner = new Html5QrcodeScanner(
                 "reader", 
-                { fps: 10, qrbox: { width: 250, height: 250 } }, 
+                { fps: 15, qrbox: { width: 250, height: 250 } }, 
                 false
             );
 
             scanner.render(
                 (decodedText) => {
-                    // Khi quét thành công -> Tắt camera và xử lý dữ liệu
+                    // Quét thành công -> Tắt camera & xử lý mã
                     scanner.clear();
                     setIsScanning(false);
                     processScannedData(decodedText);
                 },
-                (error) => {
-                    // Bỏ qua các lỗi khung hình trống
-                }
+                (error) => { /* Bỏ qua lỗi khung hình trống */ }
             );
 
-            // Dọn dẹp camera khi đóng Component
             return () => {
                 scanner.clear().catch(e => console.log("Clear scanner error", e));
             };
         }
     }, [isScanning]);
 
-    // HÀM "BỘ NÃO" TRÍCH XUẤT AWB TỪ MÃ QR CỦA SCSC
+    // BỘ NÃO BÓC TÁCH MÃ QR eDO SCSC (KHÔNG CẦN GỌI API)
     const processScannedData = (text: string) => {
         let extractedAwb = text;
         try {
-            // Trường hợp 1: QR là 1 đường link (VD: https://ecargo.scsc.vn/...edo=202602000984524...)
             if (text.includes("http")) {
                 const url = new URL(text);
-                const edoParam = url.searchParams.get("edo") || url.searchParams.get("id");
-                if (edoParam) extractedAwb = edoParam;
+                extractedAwb = url.searchParams.get("edo") || url.searchParams.get("code") || text;
             }
-            
-            // Trường hợp 2: Bóc tách mã eDO dài (VD: 202602000984524CGN32016055)
+            // Bóc tách mã eDO dài (VD: 202602000984524CGN32016055 -> Lấy 02000984524)
             const cleaned = extractedAwb.replace(/[^a-zA-Z0-9]/g, '');
-            // Nhận diện chuẩn: Năm (4 số đầu) + AWB (11 số tiếp theo)
             if (cleaned.startsWith("202") && cleaned.length >= 15) {
                 extractedAwb = cleaned.substring(4, 15); 
             }
         } catch (e) {
-            console.log("QR không phải dạng chuẩn SCSC, dùng giá trị gốc.");
+            console.log("Dùng mã gốc vì không theo chuẩn eDO dài.");
         }
         
-        console.log("Mã bóc tách được từ QR:", extractedAwb);
-        setScscId(extractedAwb);
-        handleFetchSCSC(extractedAwb); // Chạy tự động luôn không cần bấm
+        // Lưu thẳng AWB vào form để chuẩn bị xuất QR thanh toán
+        setFormData((prev: any) => ({
+            ...prev,
+            awbNo: extractedAwb
+        }));
     };
 
-    // Hàm tra cứu SCSC (Đã nâng cấp để nhận biến truyền vào)
-    const handleFetchSCSC = async (idToFetch?: string) => {
-        const targetId = idToFetch || scscId;
-        if (!targetId) return alert("Vui lòng nhập ID SCSC hoặc Quét mã!");
-        
-        setIsLoading(true);
-        setTrackingInfo(null);
-        
-        try {
-            const res = await fetch(`/api/scsc?id=${targetId}`);
-            const data = await res.json();
-            
-            if (data.success) {
-                setTrackingInfo({ ...data, id: targetId }); 
-                
-                // Bơm trực tiếp vào State tổng
-                setFormData((prev: any) => ({
-                    ...prev,
-                    cwInput: data.weight,   
-                    d1Val: data.dateIn,     
-                    t1Val: data.timeIn,     
-                    awbNo: data.flight || targetId 
-                }));
-            } else {
-                alert("Lỗi: " + data.error);
+    // Hàm cập nhật AWB bằng tay (Nếu nhân viên gõ tay thay vì quét QR)
+    const handleAwbChange = (e: any) => {
+        setFormData((prev: any) => ({
+            ...prev,
+            awbNo: e.target.value
+        }));
+    };
+
+    const addHolidayRange = () => {
+        if (!tempStartDate) return alert("Vui lòng chọn ít nhất 'Từ ngày' để thêm Lễ!");
+        let newDates: string[] = [];
+        if (!tempEndDate) {
+            newDates.push(tempStartDate);
+        } else {
+            let start = new Date(tempStartDate);
+            let end = new Date(tempEndDate);
+            if (end < start) return alert("Ngày kết thúc không thể trước ngày bắt đầu!");
+            let current = new Date(start);
+            while (current <= end) {
+                const yyyy = current.getFullYear();
+                const mm = String(current.getMonth() + 1).padStart(2, '0');
+                const dd = String(current.getDate()).padStart(2, '0');
+                newDates.push(`${yyyy}-${mm}-${dd}`);
+                current.setDate(current.getDate() + 1);
             }
-        } catch (error) {
-            alert("Không thể kết nối với máy chủ!");
-        } finally {
-            setIsLoading(false);
         }
+        const currentHolidays = formData.holidays || [];
+        const uniqueNewDates = newDates.filter(d => !currentHolidays.includes(d));
+        if (uniqueNewDates.length > 0) {
+            handleChange({ target: { name: 'holidays', value: [...currentHolidays, ...uniqueNewDates] } });
+        }
+        setTempStartDate(""); setTempEndDate("");
     };
 
-    // ... (Giữ nguyên các hàm addHolidayRange, removeHoliday như cũ) ...
-    const addHolidayRange = () => { /* ... */ };
-    const removeHoliday = (dateToRemove: string) => { /* ... */ };
+    const removeHoliday = (dateToRemove: string) => {
+        handleChange({ target: { name: 'holidays', value: formData.holidays.filter((d: string) => d !== dateToRemove) } });
+    };
 
     return (
         <div className="w-full md:w-1/2 p-8 border-b md:border-b-0 md:border-r border-slate-700 overflow-y-auto bg-slate-900/30">
@@ -111,61 +102,45 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
                 ⚡ SPARTAN LOGISTICS
             </h2>
             
-            {/* KHUNG TRA CỨU & QUÉT MÃ QR */}
-            <div className="bg-slate-800/80 p-4 rounded-2xl border border-slate-600 mb-6 shadow-inner">
-                <label className="block text-xs font-bold text-sky-400 mb-2 uppercase tracking-widest">Tra cứu hoặc Quét mã eDO</label>
+            {/* 1. KHUNG QUÉT QR eDO CỦA SCSC */}
+            <div className="bg-slate-800/80 p-5 rounded-2xl border border-slate-600 mb-6 shadow-inner">
+                <label className="block text-xs font-bold text-sky-400 mb-3 uppercase tracking-widest">
+                    Số Không Vận Đơn (AWB)
+                </label>
                 
-                {/* Nút bật tắt Camera */}
+                {/* HIỂN THỊ CAMERA NẾU BẤM NÚT QUÉT */}
                 {isScanning && (
-                    <div className="mb-4 bg-black p-2 rounded-lg border-2 border-emerald-500 overflow-hidden relative">
-                        <button onClick={() => setIsScanning(false)} className="absolute top-2 right-2 z-10 bg-red-600 text-white text-xs px-2 py-1 rounded font-bold">Đóng ✕</button>
-                        <div id="reader" className="w-full"></div>
+                    <div className="mb-4 bg-black p-2 rounded-xl border-2 border-emerald-500 overflow-hidden relative shadow-2xl">
+                        <button onClick={() => setIsScanning(false)} className="absolute top-2 right-2 z-10 bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg font-bold shadow-lg">ĐÓNG ✕</button>
+                        <div id="reader" className="w-full rounded overflow-hidden"></div>
                     </div>
                 )}
 
                 <div className="flex gap-2">
                     <button 
                         onClick={() => setIsScanning(!isScanning)} 
-                        className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-3 rounded-xl transition-all flex items-center justify-center shadow-lg"
-                        title="Quét mã QR từ giấy eDO"
+                        className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2"
+                        title="Dùng Camera quét QR"
                     >
-                        📸 QR
+                        📸 <span className="text-sm hidden md:inline">Quét QR eDO</span>
                     </button>
                     <input 
                         type="text" 
-                        value={scscId} 
-                        onChange={(e) => setScscId(e.target.value)} 
-                        placeholder="Nhập ID/AWB..." 
-                        className="flex-1 bg-slate-900 border border-slate-600 rounded-xl p-3 text-white focus:outline-none focus:border-sky-500 font-mono text-sm"
-                        onKeyDown={(e) => e.key === 'Enter' && handleFetchSCSC()}
+                        value={formData.awbNo || ""} 
+                        onChange={handleAwbChange} 
+                        placeholder="Quét mã hoặc nhập tay AWB..." 
+                        className="flex-1 bg-slate-900 border border-slate-600 rounded-xl p-3 text-emerald-400 font-bold focus:outline-none focus:border-emerald-500 font-mono text-sm tracking-widest"
                     />
-                    <button 
-                        onClick={() => handleFetchSCSC()} 
-                        disabled={isLoading}
-                        className="bg-sky-600 hover:bg-sky-500 disabled:bg-slate-600 text-white font-bold py-2 px-5 rounded-xl transition-colors shadow-lg"
-                    >
-                        {isLoading ? '...' : 'Kéo'}
-                    </button>
                 </div>
-
-                {trackingInfo && (
-                    <div className="mt-4 p-3 bg-slate-900/80 rounded-xl border border-slate-700 text-sm">
-                        <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-[12px]">
-                            <div><span className="text-slate-500">Chuyến bay:</span> <span className="text-white font-bold">{trackingInfo.flight}</span></div>
-                            <div><span className="text-slate-500">Số kiện:</span> <span className="text-white">{trackingInfo.pieces}</span></div>
-                            <div><span className="text-slate-500">Charge Wgt:</span> <span className="text-amber-400 font-bold">{trackingInfo.weight} kg</span></div>
-                            <div><span className="text-slate-500">Ngày đáp:</span> <span className="text-cyan-400">{trackingInfo.rawAta}</span></div>
-                        </div>
-                        <div className="mt-3 text-[10px] text-sky-400 text-center font-bold bg-sky-900/20 py-1.5 rounded-lg border border-sky-800/30">
-                            ✓ Đã điền Số Kg và Ngày Giờ Đáp
-                        </div>
-                    </div>
+                {formData.awbNo && (
+                    <p className="text-[10px] text-emerald-500/70 font-bold mt-2 uppercase tracking-wider pl-1">
+                        ✓ Mã AWB đã sẵn sàng để xuất mã QR thanh toán
+                    </p>
                 )}
             </div>
 
-            {/* FORM TÍNH TIỀN CHÍNH (Dán lại phần Form UI MỚI tao đã gửi ở bước trước vào đây) */}
+            {/* 2. FORM TÍNH TIỀN CHÍNH */}
             <div className="space-y-5">
-                {/* --- UI CHỌN NGÀY GIỜ MỚI --- */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
                         <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Ngày/Giờ Đáp (ATA)</label>
@@ -206,7 +181,7 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label className="block text-[11px] font-bold text-cyan-400 uppercase mb-1">Charge Weight (kg)</label>
-                        <input type="number" step="0.1" name="cwInput" value={formData.cwInput || ""} onChange={handleChange} placeholder="VD: 212.5" className="w-full bg-slate-800 border border-slate-600 rounded-xl p-2.5 text-cyan-300 font-bold focus:border-cyan-500 outline-none"/>
+                        <input type="number" step="0.1" name="cwInput" value={formData.cwInput || ""} onChange={handleChange} placeholder="Ghi trên eDO" className="w-full bg-slate-800 border border-slate-600 rounded-xl p-2.5 text-cyan-300 font-bold focus:border-cyan-500 outline-none"/>
                     </div>
                     <div>
                         <label className="block text-[11px] font-bold text-emerald-400 uppercase mb-1">Mã Số Thuế (Tùy chọn)</label>
