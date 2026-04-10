@@ -8,8 +8,10 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
     
     // State bật/tắt Camera
     const [isScanning, setIsScanning] = useState(false);
+    // State Loading cho thao tác tải file
+    const [isUploading, setIsUploading] = useState(false);
 
-    // Kích hoạt Camera khi bấm nút Quét
+    // KÍCH HOẠT CAMERA QUÉT QR
     useEffect(() => {
         if (isScanning) {
             const scanner = new Html5QrcodeScanner(
@@ -20,7 +22,6 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
 
             scanner.render(
                 (decodedText) => {
-                    // Quét thành công -> Tắt camera & xử lý mã
                     scanner.clear();
                     setIsScanning(false);
                     processScannedData(decodedText);
@@ -34,7 +35,7 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
         }
     }, [isScanning]);
 
-    // BỘ NÃO BÓC TÁCH MÃ QR eDO SCSC (KHÔNG CẦN GỌI API)
+    // BỘ NÃO BÓC TÁCH MÃ TỪ QR eDO
     const processScannedData = (text: string) => {
         let extractedAwb = text;
         try {
@@ -42,30 +43,50 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
                 const url = new URL(text);
                 extractedAwb = url.searchParams.get("edo") || url.searchParams.get("code") || text;
             }
-            // Bóc tách mã eDO dài (VD: 202602000984524CGN32016055 -> Lấy 02000984524)
             const cleaned = extractedAwb.replace(/[^a-zA-Z0-9]/g, '');
             if (cleaned.startsWith("202") && cleaned.length >= 15) {
                 extractedAwb = cleaned.substring(4, 15); 
             }
         } catch (e) {
-            console.log("Dùng mã gốc vì không theo chuẩn eDO dài.");
+            console.log("Dùng mã gốc");
         }
         
-        // Lưu thẳng AWB vào form để chuẩn bị xuất QR thanh toán
-        setFormData((prev: any) => ({
-            ...prev,
-            awbNo: extractedAwb
-        }));
+        setFormData((prev: any) => ({ ...prev, awbNo: extractedAwb }));
     };
 
-    // Hàm cập nhật AWB bằng tay (Nếu nhân viên gõ tay thay vì quét QR)
+    // HÀM MỚI: XỬ LÝ KHI CHỌN FILE PDF
+    const handlePdfUpload = async (e: any) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        const uploadData = new FormData();
+        uploadData.append("file", file);
+
+        try {
+            const res = await fetch('/api/read-pdf', { method: 'POST', body: uploadData });
+            const data = await res.json();
+            
+            if (data.success) {
+                console.log("Đọc PDF thành công, AWB:", data.awb);
+                setFormData((prev: any) => ({ ...prev, awbNo: data.awb }));
+                alert(`Đã trích xuất AWB: ${data.awb}`);
+            } else {
+                alert("Lỗi: " + data.error);
+            }
+        } catch (err) {
+            alert("Lỗi kết nối đến máy chủ đọc PDF!");
+        } finally {
+            setIsUploading(false);
+            e.target.value = null; // Reset để lần sau vẫn chọn lại file đó được
+        }
+    };
+
     const handleAwbChange = (e: any) => {
-        setFormData((prev: any) => ({
-            ...prev,
-            awbNo: e.target.value
-        }));
+        setFormData((prev: any) => ({ ...prev, awbNo: e.target.value }));
     };
 
+    // (Giữ nguyên hàm addHolidayRange, removeHoliday)
     const addHolidayRange = () => {
         if (!tempStartDate) return alert("Vui lòng chọn ít nhất 'Từ ngày' để thêm Lễ!");
         let newDates: string[] = [];
@@ -102,13 +123,12 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
                 ⚡ SPARTAN LOGISTICS
             </h2>
             
-            {/* 1. KHUNG QUÉT QR eDO CỦA SCSC */}
+            {/* KHUNG NHẬP AWB SIÊU CẤP (CAMERA + PDF + GÕ TAY) */}
             <div className="bg-slate-800/80 p-5 rounded-2xl border border-slate-600 mb-6 shadow-inner">
                 <label className="block text-xs font-bold text-sky-400 mb-3 uppercase tracking-widest">
                     Số Không Vận Đơn (AWB)
                 </label>
                 
-                {/* HIỂN THỊ CAMERA NẾU BẤM NÚT QUÉT */}
                 {isScanning && (
                     <div className="mb-4 bg-black p-2 rounded-xl border-2 border-emerald-500 overflow-hidden relative shadow-2xl">
                         <button onClick={() => setIsScanning(false)} className="absolute top-2 right-2 z-10 bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg font-bold shadow-lg">ĐÓNG ✕</button>
@@ -116,20 +136,42 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
                     </div>
                 )}
 
+                {/* File Input ẩn */}
+                <input 
+                    type="file" 
+                    id="pdfUploader" 
+                    accept="application/pdf" 
+                    className="hidden" 
+                    onChange={handlePdfUpload} 
+                />
+
                 <div className="flex gap-2">
+                    {/* NÚT QUÉT CAMERA */}
                     <button 
                         onClick={() => setIsScanning(!isScanning)} 
-                        className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2"
+                        className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-3 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2"
                         title="Dùng Camera quét QR"
                     >
-                        📸 <span className="text-sm hidden md:inline">Quét QR eDO</span>
+                        📸
                     </button>
+
+                    {/* NÚT TẢI PDF MỚI THÊM */}
+                    <button 
+                        onClick={() => document.getElementById('pdfUploader')?.click()} 
+                        disabled={isUploading}
+                        className="bg-fuchsia-600 hover:bg-fuchsia-500 disabled:bg-slate-600 text-white font-bold py-3 px-3 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2"
+                        title="Tải file PDF chứa eDO"
+                    >
+                        {isUploading ? '⌛' : '📄'}
+                    </button>
+
+                    {/* Ô NHẬP AWB */}
                     <input 
                         type="text" 
                         value={formData.awbNo || ""} 
                         onChange={handleAwbChange} 
-                        placeholder="Quét mã hoặc nhập tay AWB..." 
-                        className="flex-1 bg-slate-900 border border-slate-600 rounded-xl p-3 text-emerald-400 font-bold focus:outline-none focus:border-emerald-500 font-mono text-sm tracking-widest"
+                        placeholder="Nhập tay, quét QR, hoặc tải PDF..." 
+                        className="flex-1 bg-slate-900 border border-slate-600 rounded-xl p-3 text-emerald-400 font-bold focus:outline-none focus:border-emerald-500 font-mono text-xs md:text-sm tracking-widest"
                     />
                 </div>
                 {formData.awbNo && (
@@ -139,7 +181,7 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
                 )}
             </div>
 
-            {/* 2. FORM TÍNH TIỀN CHÍNH */}
+            {/* FORM TÍNH TIỀN CHÍNH */}
             <div className="space-y-5">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
@@ -199,7 +241,7 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
                 </div>
 
                 <div className="p-4 bg-slate-800/40 border border-slate-700 rounded-xl">
-                    <label className="block text-[11px] font-bold text-pink-400 mb-2 uppercase">Cài đặt Ngày Lễ Toàn Hệ Thống</label>
+                    <label className="block text-[11px] font-bold text-pink-400 mb-2 uppercase">Cài đặt Ngày Lễ</label>
                     <div className="flex items-center gap-2 mb-3">
                         <input type="date" value={tempStartDate} onChange={(e) => setTempStartDate(e.target.value)} className="flex-1 bg-slate-900 border border-pink-500/30 rounded-lg p-2 text-white text-xs [color-scheme:dark] outline-none focus:border-pink-500" />
                         <span className="text-slate-500">-</span>
