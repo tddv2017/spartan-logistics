@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react';
 import InputForm from '@/app/components/InputForm';
 import InvoiceBoard from '@/app/components/InvoiceBoard';
-// import { calculateLogisticsFees } from '@/app/utils/calculator'; <-- TẠM TẮT ĐỂ DÙNG LOGIC MỚI BÊN DƯỚI
+import { calculateLogisticsFees } from '@/app/utils/calculator';
 // Nhúng Radar Firebase
-import { doc, onSnapshot, setDoc } from "firebase/firestore"; 
-import { db } from '@/app/utils/firebase'; 
+import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { db } from '@/app/utils/firebase';
 
 const safeTime = (timeStr: string) => {
     let val = timeStr.replace(/\D/g, '');
@@ -92,59 +92,30 @@ export default function Home() {
         });
     };
 
-    // --- LOGIC TÍNH TOÁN CÓ XỬ LÝ LỄ ---
+    // --- LOGIC TÍNH TOÁN CHÍNH XÁC (dùng calculator.ts) ---
     const handleCalculate = () => {
         if (!formData.d1Val || !formData.d2Val || !formData.cwInput) {
-            alert("Vui lòng nhập đầy đủ Ngày đáp, Ngày lấy và Số kg!"); 
+            alert("Vui lòng nhập đầy đủ Ngày đáp, Ngày lấy và Số kg!");
             return;
         }
 
         try {
-            const weight = parseFloat(formData.cwInput);
-            const isGen = formData.code === "GEN";
-            let chargeDays = 0;
-            let holidayCount = 0;
-            let breakdown: any[] = [];
+            const t1 = safeTime(formData.t1Val);
+            const t2 = safeTime(formData.t2Val);
 
-            let start = new Date(formData.d1Val);
-            let end = new Date(formData.d2Val);
-
-            // Đếm ngày và kiểm tra Lễ
-            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                const dateStr = d.toISOString().split('T')[0];
-                const isHoliday = formData.holidays.includes(dateStr);
-                
-                if (isHoliday) {
-                    holidayCount++;
-                    if (isGen) {
-                        breakdown.push({ text: `${dateStr.split('-').reverse().join('/')}: Lễ (MIỄN PHÍ HÀNG THƯỜNG)`, isGreen: true });
-                    } else {
-                        breakdown.push({ text: `${dateStr.split('-').reverse().join('/')}: Lễ (VẪN TÍNH PHÍ ĐẶC THÙ)`, isWarn: true });
-                        chargeDays++;
-                    }
-                } else {
-                    chargeDays++;
-                }
-            }
-
-            // Tính tiền cơ bản (Mày thay đổi hệ số cho đúng bảng giá SCSC nhé)
-            const billableDays = Math.max(0, chargeDays - 3); // Giả sử 3 ngày đầu free
-            const feeStor = billableDays * weight * 600; // 600đ/kg/ngày
-            const feeHand = Math.max(weight * 850, 150000); // Phí bốc xếp
-            const feeOT = formData.otSelect === '0.27' ? feeHand * 0.27 : 0;
-            const feeEscort = formData.code === 'VAL' ? 200000 : 0;
-            const vat = (feeHand + feeStor + feeOT + feeEscort) * 0.08;
-
-            setResult({
-                feeHand, feeStor, feeOT, feeEscort, vat,
-                total: feeHand + feeStor + feeOT + feeEscort + vat,
-                daysMsg: `${chargeDays} ngày lưu bãi`,
-                holidayCount,
-                isGenExempt: isGen && holidayCount > 0,
-                breakdown,
-                handLabelText: "Phí Phục Vụ",
-                otLabelText: "Phí Ngoài Giờ"
+            const calcResult = calculateLogisticsFees({
+                code: formData.code,
+                express: formData.express,
+                otSelect: formData.otSelect,
+                cwInput: String(formData.cwInput),
+                d1Val: formData.d1Val,
+                t1Val: t1,
+                d2Val: formData.d2Val,
+                t2Val: t2,
+                holidays: formData.holidays,
             });
+
+            setResult(calcResult);
         } catch (error: any) {
             alert("Lỗi tính toán: " + error.message);
         }
@@ -152,8 +123,27 @@ export default function Home() {
 
     const handleCopy = () => {
         if (!result) return;
-        const text = `📄 HÓA ĐƠN KHO VẬN (${formData.code})\n- Trọng lượng: ${formData.cwInput} kg\n- AWB: ${formData.awbNo || "Không có"}\n--------------------------\n1. ${result.handLabelText}: ${Math.round(result.feeHand).toLocaleString('vi-VN')} đ\n2. Phí Lưu Kho: ${Math.round(result.feeStor).toLocaleString('vi-VN')} đ\n3. Thuế VAT (8%): ${Math.round(result.vat).toLocaleString('vi-VN')} đ\n==========================\n💰 TỔNG CỘNG: ${Math.round(result.total).toLocaleString('vi-VN')} VNĐ`;
-        navigator.clipboard.writeText(text);
+        const fmt = (n: number) => Math.round(n).toLocaleString('vi-VN');
+        let lines = [
+            `📄 HÓA ĐƠN KHO VẬN (${formData.code})`,
+            `- Trọng lượng: ${formData.cwInput} kg`,
+            `- AWB: ${formData.awbNo || "Không có"}`,
+            `- Thời gian: ${result.daysMsg}`,
+            `--------------------------`,
+            `1. ${result.handLabelText}: ${fmt(result.feeHand)} đ`,
+        ];
+        let idx = 2;
+        if (result.feeOT > 0) {
+            lines.push(`${idx++}. ${result.otLabelText}: ${fmt(result.feeOT)} đ`);
+        }
+        if (result.feeEscort > 0) {
+            lines.push(`${idx++}. Phí Áp Tải (VAL): ${fmt(result.feeEscort)} đ`);
+        }
+        lines.push(`${idx++}. Phí Lưu Kho: ${fmt(result.feeStor)} đ`);
+        lines.push(`${idx}. Thuế VAT (8%): ${fmt(result.vat)} đ`);
+        lines.push(`==========================`);
+        lines.push(`💰 TỔNG CỘNG: ${fmt(result.total)} VNĐ`);
+        navigator.clipboard.writeText(lines.join('\n'));
         alert("Đã Copy hóa đơn!");
     };
 

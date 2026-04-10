@@ -208,6 +208,8 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
                             <option value="PER">Hàng Lạnh (PER)</option>
                             <option value="VAL">Giá Trị Cao (VAL)</option>
                             <option value="DGR">Nguy Hiểm (DGR)</option>
+                            <option value="AVI">Súc Vật Sống (AVI)</option>
+                            <option value="VUN">Hàng Dễ Vỡ (VUN)</option>
                         </select>
                     </div>
                     <div>
@@ -216,6 +218,8 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
                             <option value="0">Tiêu chuẩn</option>
                             <option value="1">Mức 1 (1.5 - 3H)</option>
                             <option value="2">Mức 2 (3 - 6H)</option>
+                            <option value="3">Mức 3 (6 - 9H)</option>
+                            <option value="4">Mức 4 (9 - 12H)</option>
                         </select>
                     </div>
                 </div>
@@ -236,6 +240,8 @@ export default function InputForm({ formData, handleChange, handleBlurTime, calc
                     <select name="otSelect" value={formData.otSelect} onChange={handleChange} className="w-full bg-slate-800 border border-slate-600 rounded-xl p-2.5 text-white text-sm outline-none focus:border-purple-500">
                         <option value="auto">Tự động (Theo giờ lấy)</option>
                         <option value="0">Không OT (0%)</option>
+                        <option value="0.09">Ngoài giờ 17h-22h (9%)</option>
+                        <option value="0.18">Khuya 22h-06h (18%)</option>
                         <option value="0.27">Chủ Nhật / Lễ (27%)</option>
                     </select>
                 </div>

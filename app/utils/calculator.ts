@@ -10,18 +10,26 @@ export const calculateLogisticsFees = (data: any) => {
     const diffHours = (dt2.getTime() - dt1.getTime()) / (1000 * 60 * 60);
     const blocks24h = diffHours <= 0 ? 1 : Math.ceil(diffHours / 24);
 
+    // Dùng local date (năm/tháng/ngày) để tránh UTC drift khi tính khoảng ngày
     const cal1 = new Date(dt1.getFullYear(), dt1.getMonth(), dt1.getDate());
     const cal2 = new Date(dt2.getFullYear(), dt2.getMonth(), dt2.getDate());
     const calDiff = Math.round((cal2.getTime() - cal1.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
     // --- BỘ NHẬN DIỆN NGÀY LỄ (Từ mảng Input Form) ---
     // holidays giờ đây là mảng: ["2026-04-30", "2026-05-01"]
+    // Dùng local time (getFullYear/getMonth/getDate) để tránh lệch timezone UTC
     const checkIsHoliday = (dObj: Date) => {
         const d = dObj.getDate().toString().padStart(2, '0');
         const m = (dObj.getMonth() + 1).toString().padStart(2, '0');
         const y = dObj.getFullYear();
-        const yyyy_mm_dd = `${y}-${m}-${d}`; 
+        const yyyy_mm_dd = `${y}-${m}-${d}`;
         return holidays.includes(yyyy_mm_dd);
+    };
+
+    // Helper tạo Date local (tránh UTC shift) từ chuỗi yyyy-mm-dd
+    const localDate = (yyyy_mm_dd: string) => {
+        const [y, m, d] = yyyy_mm_dd.split('-').map(Number);
+        return new Date(y, m - 1, d);
     };
 
     // --- 1. PHÍ PHỤC VỤ ---
@@ -88,7 +96,8 @@ export const calculateLogisticsFees = (data: any) => {
                 let chargeableDays = 0;
 
                 for (let i = 3; i < calDiff; i++) {
-                    let tempDate = new Date(cal1.getTime() + i * 24 * 60 * 60 * 1000);
+                    // Dùng constructor local để tránh lệch DST/timezone khi cộng milliseconds
+                    let tempDate = new Date(cal1.getFullYear(), cal1.getMonth(), cal1.getDate() + i);
                     let isSun = tempDate.getDay() === 0;
                     let isHol = checkIsHoliday(tempDate); 
 
