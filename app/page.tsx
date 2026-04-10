@@ -3,36 +3,35 @@
 import { useState, useEffect } from 'react';
 import InputForm from '@/app/components/InputForm';
 import InvoiceBoard from '@/app/components/InvoiceBoard';
-import { calculateLogisticsFees } from '@/app/utils/calculator';
-// Nhúng Radar Firebase
+import { calculateLogisticsFees, calculateMultiPartFees } from '@/app/utils/calculator';
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from '@/app/utils/firebase';
 
 const safeTime = (timeStr: string) => {
-    let val = timeStr.replace(/\D/g, '');
+    let val = (timeStr || '').replace(/\D/g, '');
     if (!val) return "00:00";
     if (val.length <= 2) val = val.padEnd(4, '0');
     if (val.length === 3) val = '0' + val;
     if (val.length > 4) val = val.substring(0, 4);
-    
     let hh = parseInt(val.substring(0, 2)) || 0;
     let mm = parseInt(val.substring(2, 4)) || 0;
     if (hh > 23) hh = 23;
     if (mm > 59) mm = 59;
-    return (hh < 10 ? '0' + hh : hh) + ":" + (mm < 10 ? '0' + mm : mm);
+    return (hh < 10 ? '0' + hh : String(hh)) + ":" + (mm < 10 ? '0' + mm : String(mm));
 };
 
 export default function Home() {
     const [formData, setFormData] = useState<any>({
         code: 'GEN', express: '0', otSelect: 'auto',
-        d1Val: '', t1Val: '', d2Val: '', t2Val: '', cwInput: '', taxCode: '', awbNo: '',
-        holidays: [] 
+        d1Val: '', t1Val: '', d2Val: '', t2Val: '',
+        grossInput: '', cwInput: '',
+        taxCode: '', awbNo: '',
+        holidays: [],
+        parts: [],  // [{ id, arrivalDate, grossKg }]
     });
     const [result, setResult] = useState<any>(null);
 
-    // =====================================================================
-    // 🛰️ RADAR THEO DÕI NGÀY LỄ TỪ FIREBASE (REAL-TIME)
-    // =====================================================================
+    // ── FIREBASE SYNC NGÀY LỄ ───────────────────────────────────────────────
     useEffect(() => {
         const docRef = doc(db, "configs", "logistics");
         const unsubscribe = onSnapshot(docRef, (docSnap) => {
@@ -53,6 +52,7 @@ export default function Home() {
         }
     };
 
+    // ── AUTO SELECT EXPRESS ──────────────────────────────────────────────────
     const autoSelectExpress = (data: any) => {
         if (!data.d1Val || !data.d2Val) return data.express;
         const t1 = safeTime(data.t1Val);
@@ -75,7 +75,7 @@ export default function Home() {
         const { name, value } = e.target;
         setFormData((prev: any) => {
             const updated = { ...prev, [name]: value };
-            if (['d1Val', 'd2Val', 't1Val', 't2Val', 'cargoCode'].includes(name)) {
+            if (['d1Val', 'd2Val', 't1Val', 't2Val', 'code'].includes(name)) {
                 updated.express = autoSelectExpress(updated);
             }
             if (name === 'holidays') updateHolidaysToFirebase(value);
@@ -92,10 +92,10 @@ export default function Home() {
         });
     };
 
-    // --- LOGIC TÍNH TOÁN CHÍNH XÁC (dùng calculator.ts) ---
+    // ── TÍNH TOÁN ────────────────────────────────────────────────────────────
     const handleCalculate = () => {
         if (!formData.d1Val || !formData.d2Val || !formData.cwInput) {
-            alert("Vui lòng nhập đầy đủ Ngày đáp, Ngày lấy và Số kg!");
+            alert("Vui lòng nhập đầy đủ Ngày đáp, Ngày lấy và Charge Weight!");
             return;
         }
 
@@ -103,7 +103,7 @@ export default function Home() {
             const t1 = safeTime(formData.t1Val);
             const t2 = safeTime(formData.t2Val);
 
-            const calcResult = calculateLogisticsFees({
+            const baseData = {
                 code: formData.code,
                 express: formData.express,
                 otSelect: formData.otSelect,
@@ -113,7 +113,21 @@ export default function Home() {
                 d2Val: formData.d2Val,
                 t2Val: t2,
                 holidays: formData.holidays,
-            });
+            };
+
+            // Kiểm tra có lô hàng hợp lệ không
+            const validParts = (formData.parts || []).filter(
+                (p: any) => p.arrivalDate && parseFloat(p.grossKg) > 0
+            );
+
+            let calcResult;
+            if (validParts.length > 0) {
+                // MULTI-PART: storage tính từng lô theo CW qui đổi
+                calcResult = calculateMultiPartFees({ ...baseData, parts: validParts });
+            } else {
+                // SINGLE-PART: dùng d1Val làm ngày về kho
+                calcResult = calculateLogisticsFees(baseData);
+            }
 
             setResult(calcResult);
         } catch (error: any) {
@@ -121,28 +135,46 @@ export default function Home() {
         }
     };
 
+    // ── COPY HÓA ĐƠN ────────────────────────────────────────────────────────
     const handleCopy = () => {
         if (!result) return;
-        const fmt = (n: number) => Math.round(n).toLocaleString('vi-VN');
-        let lines = [
+        const fmtNum = (n: number) => Math.round(n).toLocaleString('vi-VN');
+        const fmtKg = (n: number) => n % 1 === 0 ? n.toString() : n.toFixed(2);
+
+        const lines: string[] = [
             `📄 HÓA ĐƠN KHO VẬN (${formData.code})`,
-            `- Trọng lượng: ${formData.cwInput} kg`,
             `- AWB: ${formData.awbNo || "Không có"}`,
-            `- Thời gian: ${result.daysMsg}`,
-            `--------------------------`,
-            `1. ${result.handLabelText}: ${fmt(result.feeHand)} đ`,
         ];
-        let idx = 2;
-        if (result.feeOT > 0) {
-            lines.push(`${idx++}. ${result.otLabelText}: ${fmt(result.feeOT)} đ`);
+
+        if (result.isMultiPart) {
+            lines.push(`- Tổng Gross: ${fmtKg(result.totalGross)} kg`);
+            lines.push(`- Tổng CW: ${fmtKg(result.totalCW)} kg`);
+        } else {
+            if (formData.grossInput) lines.push(`- Gross: ${formData.grossInput} kg`);
+            lines.push(`- Charge Weight: ${formData.cwInput} kg`);
         }
-        if (result.feeEscort > 0) {
-            lines.push(`${idx++}. Phí Áp Tải (VAL): ${fmt(result.feeEscort)} đ`);
+
+        lines.push(`- ${result.daysMsg}`);
+        lines.push(`--------------------------`);
+
+        let idx = 1;
+        lines.push(`${idx++}. ${result.handLabelText}: ${fmtNum(result.feeHand)} đ`);
+        if (result.feeOT > 0) lines.push(`${idx++}. ${result.otLabelText}: ${fmtNum(result.feeOT)} đ`);
+        if (result.feeEscort > 0) lines.push(`${idx++}. Phí Áp Tải (VAL): ${fmtNum(result.feeEscort)} đ`);
+
+        if (result.isMultiPart && result.parts?.length > 0) {
+            lines.push(`${idx++}. Phí Lưu Kho (${result.parts.length} lô): ${fmtNum(result.feeStor)} đ`);
+            result.parts.forEach((part: any, i: number) => {
+                lines.push(`   Lô ${i+1} (${part.arrivalDate.split('-').reverse().join('/')}): Gross ${fmtKg(part.grossKg)}kg → CW ${fmtKg(part.cwPart)}kg | ${part.daysMsg} → ${fmtNum(part.feeStor)} đ`);
+            });
+        } else {
+            lines.push(`${idx++}. Phí Lưu Kho: ${fmtNum(result.feeStor)} đ`);
         }
-        lines.push(`${idx++}. Phí Lưu Kho: ${fmt(result.feeStor)} đ`);
-        lines.push(`${idx}. Thuế VAT (8%): ${fmt(result.vat)} đ`);
+
+        lines.push(`${idx}. Thuế VAT (8%): ${fmtNum(result.vat)} đ`);
         lines.push(`==========================`);
-        lines.push(`💰 TỔNG CỘNG: ${fmt(result.total)} VNĐ`);
+        lines.push(`💰 TỔNG CỘNG: ${fmtNum(result.total)} VNĐ`);
+
         navigator.clipboard.writeText(lines.join('\n'));
         alert("Đã Copy hóa đơn!");
     };
@@ -150,19 +182,19 @@ export default function Home() {
     return (
         <main className="min-h-screen bg-[#020617] flex items-center justify-center p-4 font-sans text-slate-100">
             <div className="max-w-5xl w-full bg-slate-900/50 backdrop-blur-md rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row border border-slate-700/50">
-                <InputForm 
-                    formData={formData} 
-                    handleChange={handleChange} 
-                    handleBlurTime={handleBlurTime} 
-                    calculateFees={handleCalculate} 
+                <InputForm
+                    formData={formData}
+                    handleChange={handleChange}
+                    handleBlurTime={handleBlurTime}
+                    calculateFees={handleCalculate}
                     setFormData={setFormData}
                 />
-                {/* Truyền awbNo và taxCode sang InvoiceBoard để tạo mã QR chuẩn */}
-                <InvoiceBoard 
-                    result={result} 
-                    onCopy={handleCopy} 
-                    awbNo={formData.awbNo} 
+                <InvoiceBoard
+                    result={result}
+                    onCopy={handleCopy}
+                    awbNo={formData.awbNo}
                     taxCode={formData.taxCode}
+                    grossInput={formData.grossInput}
                 />
             </div>
         </main>
